@@ -1,0 +1,13 @@
+{
+  "name": "v2-license-server",
+  "version": "1.0.0",
+  "description": "V2 Game Optimizer — License activation backend",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "pg": "^8.11.3",
+    "resend": "^3.2.0"
+  }
+}
