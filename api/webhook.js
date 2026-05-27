@@ -1,43 +1,33 @@
-const { generateLicenseKey, getMaxActivations, verifyWebhookSignature } = require('../lib/license')
+const { generateLicenseKey, verifyKiwifyToken } = require('../lib/license')
 const { query } = require('../lib/db')
 const { sendLicenseEmail } = require('../lib/mailer')
-
-async function getRawBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    req.on('data', chunk => chunks.push(chunk))
-    req.on('end', () => resolve(Buffer.concat(chunks)))
-    req.on('error', reject)
-  })
-}
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
-  const rawBody = await getRawBody(req)
-  const signature = req.headers['x-signature']
-
-  if (!signature || !verifyWebhookSignature(rawBody, signature)) {
-    return res.status(401).json({ error: 'Invalid signature' })
-  }
-
   let event
   try {
-    event = JSON.parse(rawBody.toString())
+    event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
   } catch {
     return res.status(400).json({ error: 'Invalid JSON' })
   }
 
-  if (event.meta?.event_name !== 'order_created') {
+  // Verify Kiwify token
+  if (!verifyKiwifyToken(event.token)) {
+    return res.status(401).json({ error: 'Invalid token' })
+  }
+
+  // Only process approved orders
+  if (event.event !== 'order.approved') {
     return res.status(200).json({ received: true })
   }
 
-  const order = event.data?.attributes
-  const orderId = String(event.data?.id)
-  const email = order?.user_email
-  const variantId = String(order?.first_order_item?.variant_id)
+  const purchase = event.data?.purchase
+  const email    = purchase?.customer?.email
+  const orderId  = String(purchase?.id || '')
+  const price    = purchase?.offer?.price ?? purchase?.product?.price ?? 0
 
-  if (!email || !orderId || !variantId) {
+  if (!email || !orderId) {
     return res.status(400).json({ error: 'Missing order data' })
   }
 
@@ -47,15 +37,17 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ received: true })
   }
 
+  // 3 PCs if price >= R$89,90 (8990 centavos), else 1 PC
+  const maxActivations = price >= 8990 ? 3 : 1
+
   const licenseKey = generateLicenseKey()
-  const maxActivations = getMaxActivations(variantId)
-  const expiresAt = new Date()
+  const expiresAt  = new Date()
   expiresAt.setFullYear(expiresAt.getFullYear() + 1)
 
   await query(
     `INSERT INTO licenses (order_id, email, license_key, variant_id, max_activations, expires_at)
      VALUES ($1, $2, $3, $4, $5, $6)`,
-    [orderId, email, licenseKey, variantId, maxActivations, expiresAt]
+    [orderId, email, licenseKey, String(price), maxActivations, expiresAt]
   )
 
   await sendLicenseEmail({ to: email, licenseKey, maxActivations, expiresAt })
