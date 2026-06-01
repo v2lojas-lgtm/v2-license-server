@@ -18,3 +18,10 @@ CREATE TABLE IF NOT EXISTS activations (
   last_validated_at TIMESTAMP NOT NULL DEFAULT NOW(),
   UNIQUE(license_key, machine_id)
 );
+
+-- Índices para performance nas queries mais frequentes
+CREATE INDEX IF NOT EXISTS idx_licenses_license_key ON licenses(license_key);
+CREATE INDEX IF NOT EXISTS idx_licenses_order_id    ON licenses(order_id);
+CREATE INDEX IF NOT EXISTS idx_licenses_email        ON licenses(email);
+CREATE INDEX IF NOT EXISTS idx_activations_license_key ON activations(license_key);
+CREATE INDEX IF NOT EXISTS idx_activations_machine_id  ON activations(machine_id);

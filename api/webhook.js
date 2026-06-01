@@ -50,7 +50,12 @@ module.exports = async function handler(req, res) {
     [orderId, email, licenseKey, String(price), maxActivations, expiresAt]
   )
 
-  await sendLicenseEmail({ to: email, licenseKey, maxActivations, expiresAt })
+  try {
+    await sendLicenseEmail({ to: email, licenseKey, maxActivations, expiresAt })
+  } catch (emailErr) {
+    // Falha no email não deve derrubar o webhook — licença já está criada no banco
+    console.error('[webhook] sendLicenseEmail falhou:', emailErr)
+  }
 
   return res.status(200).json({ received: true })
 }
